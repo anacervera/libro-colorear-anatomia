@@ -292,8 +292,7 @@
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
       ctx.globalCompositeOperation = "multiply";
-      ctx.globalAlpha = BRUSH_ALPHA;   // <-- opacidad del trazo
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = hexToRgba(color, 0.25);;
     }
 
     ctx.beginPath();

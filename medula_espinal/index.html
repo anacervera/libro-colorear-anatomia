@@ -1,449 +1,309 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Libro de colorear – Anatomía (MVP)</title>
-  <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    body { margin: 0; background: #f6f6f6; }
-    header {
-      position: sticky; top: 0; z-index: 10;
-      background: white; border-bottom: 1px solid #ddd;
-      padding: 10px 12px;
-      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-    }
-    header > * { font-size: 14px; }
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Libro de colorear – Anatomía</title>
 
-    .wrap { display: grid; place-items: center; padding: 12px; }
+<style>
+:root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+body { margin: 0; background: #f6f6f6; }
 
-    .stage{
-      position: relative;
-      background: white;
-      border: 1px solid #ccc;
-      border-radius: 10px;
-      overflow: hidden;
-      touch-action: none;
-      box-shadow: 0 4px 14px rgba(0,0,0,.08);
-      user-select: none;
-      -webkit-user-select: none;
+header{
+  position: sticky; top: 0; z-index: 10;
+  background: white; border-bottom: 1px solid #ddd;
+  padding: 10px 12px;
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+}
 
-      /* ZOOM */
-      transform-origin: 0 0;
-      will-change: transform;
-      cursor: default;
-    }
-    .stage.dragging{ cursor: grabbing; }
+.wrap{ display: grid; place-items: center; padding: 12px; }
 
-    #paint, #overlay{
-      position: absolute;
-      left: 0; top: 0;
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-    #overlay{ pointer-events: none; }
+.stage{
+  position: relative;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  overflow: hidden;
+  touch-action: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,.08);
+  transform-origin: 0 0;
+}
 
-    .btn{
-      padding: 6px 10px; border: 1px solid #ccc; background: #fff; border-radius: 8px;
-      cursor: pointer;
-    }
-    .btn:active{ transform: translateY(1px); }
+#paint,#overlay{
+  position:absolute;
+  left:0; top:0;
+  width:100%; height:100%;
+}
 
-    .pill{ padding: 6px 10px; border: 1px solid #ccc; background: #fff; border-radius: 999px; }
-    input[type="range"]{ width: 140px; }
+#overlay{ pointer-events:none; }
 
-    .palette{ display: flex; gap: 6px; align-items: center; }
-    .swatch{
-      width: 22px; height: 22px; border-radius: 6px; border: 1px solid #bbb;
-      cursor: pointer;
-    }
-    .swatch.active{ outline: 2px solid #111; }
+.btn{
+  padding:6px 10px;
+  border:1px solid #ccc;
+  background:#fff;
+  border-radius:8px;
+  cursor:pointer;
+}
 
-    /* Botón Home dentro del header */
-    .iconbtn{
-      width: 34px; height: 34px;
-      display: inline-flex; align-items: center; justify-content: center;
-      border: 1px solid #ccc; background: #fff; border-radius: 10px;
-      text-decoration: none; color: #333;
-      box-shadow: 0 2px 8px rgba(0,0,0,.08);
-      cursor: pointer;
-      line-height: 1;
-      font-size: 16px;
-    }
-    .iconbtn:active{ transform: translateY(1px); }
-  </style>
+.iconbtn{
+  width:34px;height:34px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid #ccc;
+  background:#fff;
+  border-radius:10px;
+  text-decoration:none;
+  color:#333;
+}
+
+.pill{
+  padding:6px 10px;
+  border:1px solid #ccc;
+  background:#fff;
+  border-radius:999px;
+}
+
+.palette{ display:flex; gap:6px; align-items:center; }
+.swatch{
+  width:22px;height:22px;
+  border-radius:6px;
+  border:1px solid #bbb;
+  cursor:pointer;
+}
+.swatch.active{ outline:2px solid #111; }
+
+</style>
 </head>
 
 <body>
+
 <header>
-  <a class="iconbtn" href="../" title="Volver al índice general" aria-label="Volver al índice general">⌂</a>
-  <strong>Colorear (MVP)</strong>
+<a class="iconbtn" href="../" title="Volver al índice">⌂</a>
+<strong>Colorear</strong>
 
-  <span class="pill">Herramienta:
-    <label><input type="radio" name="tool" value="brush" checked> Pincel</label>
-    <label style="margin-left:8px"><input type="radio" name="tool" value="eraser"> Borrador</label>
-  </span>
+<span class="pill">
+<label><input type="radio" name="tool" value="brush" checked> Pincel</label>
+<label style="margin-left:8px"><input type="radio" name="tool" value="eraser"> Borrador</label>
+</span>
 
-  <span class="pill">Tamaño:
-    <input id="size" type="range" min="2" max="60" value="14" />
-    <span id="sizeVal">14</span> px
-  </span>
+<span class="pill">
+<input id="size" type="range" min="2" max="60" value="14">
+<span id="sizeVal">14</span> px
+</span>
 
-  <span class="pill">Color:
-    <input id="color" type="color" value="#ff3b30" />
-  </span>
+<input id="color" type="color" value="#ff3b30">
 
-  <div class="palette pill" id="palette">
-    <span style="margin-right:6px">Paleta:</span>
-  </div>
+<div class="palette pill" id="palette"></div>
 
-  <button class="btn" id="undo">Deshacer</button>
-  <button class="btn" id="redo">Rehacer</button>
-  <button class="btn" id="clear">Reset</button>
-  <button class="btn" id="save">Guardar PNG</button>
+<button class="btn" id="undo">Deshacer</button>
+<button class="btn" id="redo">Rehacer</button>
+<button class="btn" id="clear">Reset</button>
+<button class="btn" id="save">Guardar PNG</button>
 </header>
 
 <div class="wrap">
-  <div class="stage" id="stage">
-    <canvas id="paint"></canvas>
-    <canvas id="overlay"></canvas>
-  </div>
+<div class="stage" id="stage">
+<canvas id="paint"></canvas>
+<canvas id="overlay"></canvas>
+</div>
 </div>
 
 <script>
 (() => {
-  const imgSrc = "Medula2.png";
 
-  const paint = document.getElementById("paint");
-  const overlay = document.getElementById("overlay");
-  const stage = document.getElementById("stage");
+const imgSrc="Medula2.png";
 
-  const ctx = paint.getContext("2d");
-  const octx = overlay.getContext("2d", { willReadFrequently: true });
+const paint=document.getElementById("paint");
+const overlay=document.getElementById("overlay");
+const stage=document.getElementById("stage");
 
-  const sizeInput = document.getElementById("size");
-  const sizeVal = document.getElementById("sizeVal");
-  const colorInput = document.getElementById("color");
-  const undoBtn = document.getElementById("undo");
-  const redoBtn = document.getElementById("redo");
-  const clearBtn = document.getElementById("clear");
-  const saveBtn = document.getElementById("save");
-  const toolRadios = [...document.querySelectorAll('input[name="tool"]')];
+const ctx=paint.getContext("2d");
+const octx=overlay.getContext("2d",{willReadFrequently:true});
 
-  const paletteColors = [
-    "#ff3b30","#ff9500","#ffcc00","#34c759","#007aff","#5856d6","#af52de","#8e8e93",
-    "#ffffff","#000000"
-  ];
-  const palette = document.getElementById("palette");
-  let activeSwatch = null;
+const sizeInput=document.getElementById("size");
+const sizeVal=document.getElementById("sizeVal");
+const colorInput=document.getElementById("color");
+const undoBtn=document.getElementById("undo");
+const redoBtn=document.getElementById("redo");
+const clearBtn=document.getElementById("clear");
+const saveBtn=document.getElementById("save");
+const toolRadios=[...document.querySelectorAll('input[name="tool"]')];
 
-  function setActiveColor(hex) {
-    colorInput.value = hex;
-    if (activeSwatch) activeSwatch.classList.remove("active");
-    const sw = [...palette.querySelectorAll(".swatch")].find(s => s.dataset.hex === hex);
-    if (sw) { sw.classList.add("active"); activeSwatch = sw; }
-  }
+sizeInput.addEventListener("input",()=>sizeVal.textContent=sizeInput.value);
 
-  paletteColors.forEach((hex, i) => {
-    const d = document.createElement("div");
-    d.className = "swatch" + (i === 0 ? " active" : "");
-    d.style.background = hex;
-    d.dataset.hex = hex;
-    d.title = hex;
-    d.addEventListener("click", () => setActiveColor(hex));
-    palette.appendChild(d);
-    if (i === 0) activeSwatch = d;
-  });
+// ===== Zoom state =====
+let viewScale=1;
+let viewX=0;
+let viewY=0;
+let baseW=1;
+let baseH=1;
 
-  sizeInput.addEventListener("input", () => sizeVal.textContent = sizeInput.value);
+function applyView(){
+stage.style.transform=`translate(${viewX}px,${viewY}px) scale(${viewScale})`;
+}
 
-  const undoStack = [];
-  const redoStack = [];
-  const MAX_STACK = 25;
+function clampScale(s){
+return Math.min(5,Math.max(0.5,s));
+}
 
-  function updateButtons() {
-    undoBtn.disabled = undoStack.length === 0;
-    redoBtn.disabled = redoStack.length === 0;
-  }
+// ===== Coordenadas correctas =====
+function getPos(evt){
+const rect=stage.getBoundingClientRect();
+const sx=evt.clientX-rect.left;
+const sy=evt.clientY-rect.top;
 
-  function snapshot() {
-    try {
-      undoStack.push(paint.toDataURL("image/png"));
-      if (undoStack.length > MAX_STACK) undoStack.shift();
-      redoStack.length = 0;
-      updateButtons();
-    } catch(e) {
-      console.warn(e);
-    }
-  }
+const xStage=sx/viewScale;
+const yStage=sy/viewScale;
 
-  function restoreFromDataURL(dataUrl) {
-    const im = new Image();
-    im.onload = () => {
-      ctx.clearRect(0,0,paint.width,paint.height);
-      ctx.drawImage(im, 0, 0);
-    };
-    im.src = dataUrl;
-  }
+const x=xStage*(paint.width/baseW);
+const y=yStage*(paint.height/baseH);
 
-  undoBtn.addEventListener("click", () => {
-    if (!undoStack.length) return;
-    redoStack.push(paint.toDataURL("image/png"));
-    const prev = undoStack.pop();
-    restoreFromDataURL(prev);
-    updateButtons();
-  });
+return{x,y};
+}
 
-  redoBtn.addEventListener("click", () => {
-    if (!redoStack.length) return;
-    undoStack.push(paint.toDataURL("image/png"));
-    const next = redoStack.pop();
-    restoreFromDataURL(next);
-    updateButtons();
-  });
+// ===== Dibujo =====
+function getTool(){
+return toolRadios.find(r=>r.checked)?.value||"brush";
+}
 
-  clearBtn.addEventListener("click", () => {
-    snapshot();
-    ctx.clearRect(0,0,paint.width,paint.height);
-  });
+function stroke(p0,p1){
+ctx.save();
+ctx.lineCap="round";
+ctx.lineJoin="round";
+ctx.lineWidth=+sizeInput.value;
 
-  saveBtn.addEventListener("click", () => {
-    const out = document.createElement("canvas");
-    out.width = paint.width; out.height = paint.height;
-    const outctx = out.getContext("2d");
-    outctx.drawImage(paint, 0, 0);
-    outctx.drawImage(overlay, 0, 0);
-    const a = document.createElement("a");
-    a.download = "coloreado.png";
-    a.href = out.toDataURL("image/png");
-    a.click();
-  });
+if(getTool()==="eraser"){
+ctx.globalCompositeOperation="destination-out";
+ctx.strokeStyle="black";
+}else{
+ctx.globalCompositeOperation="source-over";
+ctx.strokeStyle=colorInput.value;
+}
 
-  function getTool() {
-    const r = toolRadios.find(x => x.checked);
-    return r ? r.value : "brush";
-  }
+ctx.beginPath();
+ctx.moveTo(p0.x,p0.y);
+ctx.lineTo(p1.x,p1.y);
+ctx.stroke();
+ctx.restore();
+}
 
-  // ====== ZOOM STATE ======
-  let viewScale = 1;
-  let viewX = 0;
-  let viewY = 0;
+let drawing=false;
+let last=null;
 
-  function applyView() {
-    stage.style.transform = `translate(${viewX}px, ${viewY}px) scale(${viewScale})`;
-  }
+stage.addEventListener("pointerdown",e=>{
+if(e.pointerType==="touch"&&pointers.size>=1)return;
 
-  function clampScale(s) {
-    return Math.min(5, Math.max(0.6, s));
-  }
+stage.setPointerCapture(e.pointerId);
+drawing=true;
+last=getPos(e);
+});
 
-  // ✅ CORREGIDO: el rect ya incluye el translate; no hay que restar viewX/viewY otra vez.
-  function getPos(evt) {
-    const rect = stage.getBoundingClientRect();
-    const sx = (evt.clientX - rect.left);
-    const sy = (evt.clientY - rect.top);
+stage.addEventListener("pointermove",e=>{
+if(pinching)return;
+if(!drawing)return;
+const pos=getPos(e);
+stroke(last,pos);
+last=pos;
+});
 
-    // deshacer solo el SCALE (no el translate)
-    const xOnStage = sx / viewScale;
-    const yOnStage = sy / viewScale;
+stage.addEventListener("pointerup",()=>{
+drawing=false;
+last=null;
+});
 
-    // mapear al tamaño interno del canvas
-    const x = xOnStage * (paint.width / rect.width);
-    const y = yOnStage * (paint.height / rect.height);
+// ===== Zoom rueda =====
+stage.addEventListener("wheel",e=>{
+e.preventDefault();
 
-    return { x, y };
-  }
+const rect=stage.getBoundingClientRect();
+const mx=e.clientX;
+const my=e.clientY;
 
-  function strokeSegment(p0, p1) {
-    const tool = getTool();
-    const size = +sizeInput.value;
-    const color = colorInput.value;
+const old=viewScale;
+const factor=e.deltaY<0?1.1:1/1.1;
+viewScale=clampScale(old*factor);
 
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = size;
+const baseLeft=rect.left-viewX;
+const baseTop=rect.top-viewY;
 
-    if (tool === "eraser") {
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.strokeStyle = "rgba(0,0,0,1)";
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = color;
-    }
+const ax=(mx-rect.left)/old;
+const ay=(my-rect.top)/old;
 
-    ctx.beginPath();
-    ctx.moveTo(p0.x, p0.y);
-    ctx.lineTo(p1.x, p1.y);
-    ctx.stroke();
-    ctx.restore();
-  }
+viewX=mx-baseLeft-ax*viewScale;
+viewY=my-baseTop-ay*viewScale;
 
-  function dot(p) {
-    const tool = getTool();
-    const size = +sizeInput.value;
-    const color = colorInput.value;
+applyView();
 
-    ctx.save();
-    if (tool === "eraser") {
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = "rgba(0,0,0,1)";
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = color;
-    }
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, size/2, 0, Math.PI*2);
-    ctx.fill();
-    ctx.restore();
-  }
+},{passive:false});
 
-  let drawing = false;
-  let last = null;
+// ===== Pinch móvil =====
+const pointers=new Map();
+let pinching=false;
+let pinchStart=null;
 
-  function onDown(evt) {
-    evt.preventDefault();
+function distance(a,b){
+return Math.hypot(a.x-b.x,a.y-b.y);
+}
 
-    if (evt.button === 2 || evt.altKey) {
-      startPan(evt);
-      return;
-    }
+function midpoint(a,b){
+return{x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+}
 
-    stage.setPointerCapture(evt.pointerId);
-    drawing = true;
-    last = getPos(evt);
-    snapshot();
-    dot(last);
-  }
+stage.addEventListener("pointerdown",e=>{
+pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+if(pointers.size===2){
+pinching=true;
+const pts=[...pointers.values()];
+pinchStart={
+dist:distance(pts[0],pts[1]),
+scale:viewScale
+};
+drawing=false;
+}
+});
 
-  function onMove(evt) {
-    if (panning) {
-      movePan(evt);
-      return;
-    }
-    if (!drawing) return;
-    evt.preventDefault();
-    const pos = getPos(evt);
-    strokeSegment(last, pos);
-    last = pos;
-  }
+stage.addEventListener("pointermove",e=>{
+if(!pointers.has(e.pointerId))return;
+pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+if(pinching&&pointers.size===2){
+const pts=[...pointers.values()];
+const ratio=distance(pts[0],pts[1])/pinchStart.dist;
+viewScale=clampScale(pinchStart.scale*ratio);
+applyView();
+}
+});
 
-  function onUp(evt) {
-    if (panning) {
-      endPan(evt);
-      return;
-    }
-    if (!drawing) return;
-    evt.preventDefault();
-    drawing = false;
-    last = null;
-    try { stage.releasePointerCapture(evt.pointerId); } catch(e) {}
-  }
+stage.addEventListener("pointerup",e=>{
+pointers.delete(e.pointerId);
+if(pointers.size<2)pinching=false;
+});
 
-  stage.addEventListener("pointerdown", onDown);
-  stage.addEventListener("pointermove", onMove);
-  stage.addEventListener("pointerup", onUp);
-  stage.addEventListener("pointercancel", onUp);
-  stage.addEventListener("pointerleave", onUp);
+// ===== Imagen =====
+const img=new Image();
+img.onload=()=>{
+paint.width=img.width;
+paint.height=img.height;
+overlay.width=img.width;
+overlay.height=img.height;
 
-  stage.addEventListener("contextmenu", (e) => e.preventDefault());
+octx.drawImage(img,0,0);
 
-  stage.addEventListener("wheel", (e) => {
-    e.preventDefault();
+const maxW=Math.min(window.innerWidth-24,1100);
+const fitScale=Math.min(1,maxW/img.width);
 
-    const rect = stage.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
+stage.style.width=(img.width*fitScale)+"px";
+stage.style.height=(img.height*fitScale)+"px";
 
-    const oldScale = viewScale;
-    const zoomFactor = (e.deltaY < 0) ? 1.12 : 1/1.12;
-    viewScale = clampScale(viewScale * zoomFactor);
+baseW=stage.clientWidth;
+baseH=stage.clientHeight;
 
-    // anclar zoom al cursor (en coordenadas CSS)
-    const k = viewScale / oldScale;
-    viewX = cx - k * (cx - viewX);
-    viewY = cy - k * (cy - viewY);
+applyView();
+};
+img.src=imgSrc;
 
-    applyView();
-  }, { passive: false });
-
-  // PAN (Alt o botón derecho)
-  let panning = false;
-  let panStart = { x: 0, y: 0 };
-  let viewStart = { x: 0, y: 0 };
-  let panPointerId = null;
-
-  function startPan(e) {
-    e.preventDefault();
-    panning = true;
-    stage.classList.add("dragging");
-    panPointerId = e.pointerId;
-    panStart = { x: e.clientX, y: e.clientY };
-    viewStart = { x: viewX, y: viewY };
-    stage.setPointerCapture(e.pointerId);
-  }
-
-  function movePan(e) {
-    if (!panning) return;
-    e.preventDefault();
-    const dx = e.clientX - panStart.x;
-    const dy = e.clientY - panStart.y;
-    viewX = viewStart.x + dx;
-    viewY = viewStart.y + dy;
-    applyView();
-  }
-
-  function endPan(e) {
-    panning = false;
-    stage.classList.remove("dragging");
-    try { stage.releasePointerCapture(panPointerId); } catch(e) {}
-    panPointerId = null;
-  }
-
-  function makeWhiteTransparent() {
-    const imgData = octx.getImageData(0, 0, overlay.width, overlay.height);
-    const d = imgData.data;
-    const TH = 245;
-    for (let i = 0; i < d.length; i += 4) {
-      const r = d[i], g = d[i+1], b = d[i+2];
-      if (r >= TH && g >= TH && b >= TH) d[i+3] = 0;
-    }
-    octx.putImageData(imgData, 0, 0);
-  }
-
-  const img = new Image();
-  img.onload = () => {
-    paint.width = img.width; paint.height = img.height;
-    overlay.width = img.width; overlay.height = img.height;
-
-    octx.clearRect(0,0,overlay.width,overlay.height);
-    octx.drawImage(img, 0, 0);
-    makeWhiteTransparent();
-
-    const maxW = Math.min(window.innerWidth - 24, 1100);
-    const fitScale = Math.min(1, maxW / img.width);
-    stage.style.width = (img.width * fitScale) + "px";
-    stage.style.height = (img.height * fitScale) + "px";
-
-    // reset vista
-    viewScale = 1; viewX = 0; viewY = 0;
-    applyView();
-
-    updateButtons();
-  };
-  img.src = imgSrc;
-
-  setActiveColor(paletteColors[0]);
-
-  window.addEventListener("resize", () => {
-    if (!img.width) return;
-    const maxW = Math.min(window.innerWidth - 24, 1100);
-    const fitScale = Math.min(1, maxW / img.width);
-    stage.style.width = (img.width * fitScale) + "px";
-    stage.style.height = (img.height * fitScale) + "px";
-  });
 })();
 </script>
+
 </body>
 </html>

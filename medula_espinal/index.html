@@ -25,7 +25,7 @@
       border: 1px solid #ccc;
       border-radius: 10px;
       overflow: hidden;
-      touch-action: none;              /* crucial para pinch/dibujo móvil */
+      touch-action: none;              /* crucial */
       box-shadow: 0 4px 14px rgba(0,0,0,.08);
       user-select: none;
       -webkit-user-select: none;
@@ -35,12 +35,23 @@
     .view{
       position: absolute;
       left: 0; top: 0;
+      width: 100%;
+      height: 100%;
       transform-origin: 0 0;
       will-change: transform;
+      /* CLAVE: los canvas se posicionan respecto a view */
+      pointer-events: none; /* evitamos que el view "robe" eventos; los recibe viewport */
     }
 
-    canvas{ display:block; }
-    #overlay{ position:absolute; left:0; top:0; pointer-events:none; }
+    /* CLAVE: canvas ocupan 100% del view (tamaño CSS), pero mantienen resolución interna */
+    #paint, #overlay{
+      position: absolute;
+      left: 0; top: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
+    }
 
     .btn{
       padding: 6px 10px; border: 1px solid #ccc; background: #fff; border-radius: 8px;
@@ -234,22 +245,24 @@
   }
 
   function applyView() {
+    // transform sobre view (los eventos se calculan sobre viewport)
     view.style.transform = `translate(${viewX}px, ${viewY}px) scale(${viewScale})`;
   }
 
-  // Convertir coordenadas de pantalla a coordenadas del canvas (inversa del transform)
+  // baseW/baseH = tamaño CSS del viewport (sin transform), que es el tamaño CSS de los canvas (100%)
+  let baseW = 1;
+  let baseH = 1;
+
+  // Convertir coordenadas pantalla -> canvas (inversa del transform)
   function getPos(evt) {
     const rect = viewport.getBoundingClientRect();
 
-    // coords dentro del viewport (CSS px)
     const sx = evt.clientX - rect.left;
     const sy = evt.clientY - rect.top;
 
-    // coords dentro del view (deshacer translate+scale)
     const xInView = (sx - viewX) / viewScale;
     const yInView = (sy - viewY) / viewScale;
 
-    // mapear a canvas (el view tiene el mismo tamaño CSS que el canvas base escalado)
     const x = xInView * (paint.width / baseW);
     const y = yInView * (paint.height / baseH);
     return { x, y };
@@ -299,7 +312,7 @@
     ctx.restore();
   }
 
-  // ===== Dibujo 1 dedo, pinch 2 dedos =====
+  // ===== Dibujo 1 dedo, pinch 2 dedos (Android/iPhone) =====
   let drawing = false;
   let last = null;
 
@@ -321,7 +334,6 @@
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (pointers.size === 2) {
-      // iniciar pinch (cancela dibujo)
       drawing = false; last = null; pinching = true;
 
       const [p0, p1] = [...pointers.values()];
@@ -338,7 +350,6 @@
     }
 
     if (pointers.size === 1) {
-      // iniciar dibujo (un dedo / ratón)
       drawing = true;
       last = getPos(e);
       snapshot();
@@ -358,7 +369,6 @@
       const ratio = dist(p0, p1) / pinchStart.startDist;
       const newScale = clampScale(pinchStart.startScale * ratio);
 
-      // pan + zoom: mover el centro del pinch
       viewScale = newScale;
       viewX = pinchStart.startX + (m.x - pinchStart.startMid.x);
       viewY = pinchStart.startY + (m.y - pinchStart.startMid.y);
@@ -390,7 +400,7 @@
   viewport.addEventListener("pointerup", endPointer, { passive: false });
   viewport.addEventListener("pointercancel", endPointer, { passive: false });
 
-  // ===== Zoom con rueda (Mac/PC) anclado al cursor =====
+  // ===== Zoom rueda (Mac/PC) anclado al cursor =====
   viewport.addEventListener("wheel", (e) => {
     e.preventDefault();
 
@@ -402,11 +412,9 @@
     const zoomFactor = (e.deltaY < 0) ? 1.12 : 1/1.12;
     const newScale = clampScale(oldScale * zoomFactor);
 
-    // punto ancla en coords del view antes del cambio
     const ax = (sx - viewX) / oldScale;
     const ay = (sy - viewY) / oldScale;
 
-    // actualizar escala y recomputar translate para mantener ancla bajo cursor
     viewScale = newScale;
     viewX = sx - ax * viewScale;
     viewY = sy - ay * viewScale;
@@ -414,10 +422,7 @@
     applyView();
   }, { passive: false });
 
-  // ===== Imagen + “fit to screen” =====
-  let baseW = 1; // tamaño CSS del view sin transform
-  let baseH = 1;
-
+  // ===== Imagen + fit =====
   function makeWhiteTransparent() {
     const imgData = octx.getImageData(0, 0, overlay.width, overlay.height);
     const d = imgData.data;
@@ -433,17 +438,15 @@
     const maxW = Math.min(window.innerWidth - 24, 1100);
     const fit = Math.min(1, maxW / imgW);
 
-    // viewport = tamaño visible “base”
     viewport.style.width = (imgW * fit) + "px";
     viewport.style.height = (imgH * fit) + "px";
 
-    // view = mismo tamaño base
-    baseW = imgW * fit;
-    baseH = imgH * fit;
-    view.style.width = baseW + "px";
-    view.style.height = baseH + "px";
+    // baseW/baseH deben ser exactamente el tamaño CSS real del viewport
+    // (canvas están a 100% del view, y el view a 100% del viewport)
+    baseW = viewport.clientWidth;
+    baseH = viewport.clientHeight;
 
-    // reset transform
+    // reset view transform
     viewScale = 1;
     viewX = 0;
     viewY = 0;
@@ -452,7 +455,6 @@
 
   const img = new Image();
   img.onload = () => {
-    // canvas interno a resolución real
     paint.width = img.width; paint.height = img.height;
     overlay.width = img.width; overlay.height = img.height;
 
@@ -460,7 +462,6 @@
     octx.drawImage(img, 0, 0);
     makeWhiteTransparent();
 
-    // fit
     fitToScreen(img.width, img.height);
     updateButtons();
   };

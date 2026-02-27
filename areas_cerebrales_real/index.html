@@ -291,8 +291,9 @@
       ctx.globalAlpha = 1.0;
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
+      ctx.globalAlpha = BRUSH_ALPHA;
       ctx.globalCompositeOperation = "multiply";
-      ctx.strokeStyle = hexToRgba(color, 0.25);;
+      ctx.strokeStyle = color;
     }
 
     ctx.beginPath();

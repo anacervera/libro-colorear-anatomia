@@ -16,19 +16,18 @@
     header > * { font-size: 14px; }
     .wrap { display: grid; place-items: center; padding: 12px; }
 
-    .stage {
+    .stage{
       position: relative;
       background: white;
       border: 1px solid #ccc;
       border-radius: 10px;
       overflow: hidden;
-      touch-action: none; /* evita scroll al dibujar en móvil/tablet */
+      touch-action: none;
       box-shadow: 0 4px 14px rgba(0,0,0,.08);
       user-select: none;
       -webkit-user-select: none;
     }
 
-    /* CLAVE: ambos canvas ocupan todo el contenedor */
     #paint, #overlay{
       position: absolute;
       left: 0; top: 0;
@@ -36,23 +35,21 @@
       height: 100%;
       display: block;
     }
+    #overlay{ pointer-events: none; }
 
-    /* overlay encima y sin interceptar eventos */
-    #overlay { pointer-events: none; }
-
-    .btn {
+    .btn{
       padding: 6px 10px; border: 1px solid #ccc; background: #fff; border-radius: 8px;
       cursor: pointer;
     }
-    .btn:active { transform: translateY(1px); }
-    .pill { padding: 6px 10px; border: 1px solid #ccc; background: #fff; border-radius: 999px; }
+    .btn:active{ transform: translateY(1px); }
+    .pill{ padding: 6px 10px; border: 1px solid #ccc; background: #fff; border-radius: 999px; }
     input[type="range"]{ width: 140px; }
-    .palette { display: flex; gap: 6px; align-items: center; }
-    .swatch {
+    .palette{ display: flex; gap: 6px; align-items: center; }
+    .swatch{
       width: 22px; height: 22px; border-radius: 6px; border: 1px solid #bbb;
       cursor: pointer;
     }
-    .swatch.active { outline: 2px solid #111; }
+    .swatch.active{ outline: 2px solid #111; }
   </style>
 </head>
 <body>
@@ -75,7 +72,6 @@
 
   <div class="palette pill" id="palette">
     <span style="margin-right:6px">Paleta:</span>
-    <!-- swatches por JS -->
   </div>
 
   <button class="btn" id="undo">Deshacer</button>
@@ -93,15 +89,15 @@
 
 <script>
 (() => {
-  const imgSrc = "lines.png"; // cambia aquí si usas otro nombre
+  const imgSrc = "lines.png";
+
   const paint = document.getElementById("paint");
   const overlay = document.getElementById("overlay");
   const stage = document.getElementById("stage");
 
-  const ctx = paint.getContext("2d", { willReadFrequently: false });
-  const octx = overlay.getContext("2d", { willReadFrequently: false });
+  const ctx = paint.getContext("2d");
+  const octx = overlay.getContext("2d", { willReadFrequently: true });
 
-  // Controles
   const sizeInput = document.getElementById("size");
   const sizeVal = document.getElementById("sizeVal");
   const colorInput = document.getElementById("color");
@@ -109,10 +105,8 @@
   const redoBtn = document.getElementById("redo");
   const clearBtn = document.getElementById("clear");
   const saveBtn = document.getElementById("save");
-
   const toolRadios = [...document.querySelectorAll('input[name="tool"]')];
 
-  // Paleta simple
   const paletteColors = [
     "#ff3b30","#ff9500","#ffcc00","#34c759","#007aff","#5856d6","#af52de","#8e8e93",
     "#ffffff","#000000"
@@ -140,20 +134,23 @@
 
   sizeInput.addEventListener("input", () => sizeVal.textContent = sizeInput.value);
 
-  // Undo/redo simple con snapshots (PNG dataURL).
   const undoStack = [];
   const redoStack = [];
   const MAX_STACK = 25;
 
+  function updateButtons() {
+    undoBtn.disabled = undoStack.length === 0;
+    redoBtn.disabled = redoStack.length === 0;
+  }
+
   function snapshot() {
     try {
-      const data = paint.toDataURL("image/png");
-      undoStack.push(data);
+      undoStack.push(paint.toDataURL("image/png"));
       if (undoStack.length > MAX_STACK) undoStack.shift();
       redoStack.length = 0;
       updateButtons();
-    } catch (e) {
-      console.warn("Snapshot error:", e);
+    } catch(e) {
+      console.warn(e);
     }
   }
 
@@ -166,15 +163,9 @@
     im.src = dataUrl;
   }
 
-  function updateButtons() {
-    undoBtn.disabled = undoStack.length === 0;
-    redoBtn.disabled = redoStack.length === 0;
-  }
-
   undoBtn.addEventListener("click", () => {
     if (!undoStack.length) return;
-    const current = paint.toDataURL("image/png");
-    redoStack.push(current);
+    redoStack.push(paint.toDataURL("image/png"));
     const prev = undoStack.pop();
     restoreFromDataURL(prev);
     updateButtons();
@@ -182,8 +173,7 @@
 
   redoBtn.addEventListener("click", () => {
     if (!redoStack.length) return;
-    const current = paint.toDataURL("image/png");
-    undoStack.push(current);
+    undoStack.push(paint.toDataURL("image/png"));
     const next = redoStack.pop();
     restoreFromDataURL(next);
     updateButtons();
@@ -195,22 +185,16 @@
   });
 
   saveBtn.addEventListener("click", () => {
-    // Exporta la composición: color + overlay
     const out = document.createElement("canvas");
     out.width = paint.width; out.height = paint.height;
     const outctx = out.getContext("2d");
     outctx.drawImage(paint, 0, 0);
     outctx.drawImage(overlay, 0, 0);
-
     const a = document.createElement("a");
     a.download = "coloreado.png";
     a.href = out.toDataURL("image/png");
     a.click();
   });
-
-  // Dibujo
-  let drawing = false;
-  let last = null;
 
   function getTool() {
     const r = toolRadios.find(x => x.checked);
@@ -263,20 +247,21 @@
       ctx.fillStyle = color;
     }
     ctx.beginPath();
-    ctx.arc(p.x, p.y, size/2, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, size/2, 0, Math.PI*2);
     ctx.fill();
     ctx.restore();
   }
 
+  let drawing = false;
+  let last = null;
+
   function onDown(evt) {
     evt.preventDefault();
-    // CLAVE: captura el puntero para que no se "pierda" el dibujo
     stage.setPointerCapture(evt.pointerId);
-
     drawing = true;
     last = getPos(evt);
-    snapshot();      // guarda estado antes del trazo
-    dot(last);       // si sólo haces tap/click sin mover
+    snapshot();
+    dot(last);
   }
 
   function onMove(evt) {
@@ -301,18 +286,34 @@
   stage.addEventListener("pointercancel", onUp);
   stage.addEventListener("pointerleave", onUp);
 
-  // Carga de la imagen y ajuste de tamaño
+  // --- CLAVE: hacer transparente el blanco del overlay ---
+  function makeWhiteTransparent() {
+    const imgData = octx.getImageData(0, 0, overlay.width, overlay.height);
+    const d = imgData.data;
+
+    // Umbral: ajusta si hiciera falta (240–254 típico)
+    const TH = 245;
+
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      // si es casi blanco → transparencia total
+      if (r >= TH && g >= TH && b >= TH) {
+        d[i+3] = 0;
+      }
+    }
+    octx.putImageData(imgData, 0, 0);
+  }
+
+  // Carga imagen
   const img = new Image();
   img.onload = () => {
-    // Ajusta canvas al tamaño real (coordenadas internas)
     paint.width = img.width; paint.height = img.height;
     overlay.width = img.width; overlay.height = img.height;
 
-    // Líneas encima
     octx.clearRect(0,0,overlay.width,overlay.height);
     octx.drawImage(img, 0, 0);
+    makeWhiteTransparent();
 
-    // Tamaño visual responsive
     const maxW = Math.min(window.innerWidth - 24, 1100);
     const scale = Math.min(1, maxW / img.width);
     stage.style.width = (img.width * scale) + "px";

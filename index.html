@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
@@ -15,6 +15,7 @@
     }
     header > * { font-size: 14px; }
     .wrap { display: grid; place-items: center; padding: 12px; }
+
     .stage {
       position: relative;
       background: white;
@@ -23,9 +24,22 @@
       overflow: hidden;
       touch-action: none; /* evita scroll al dibujar en móvil/tablet */
       box-shadow: 0 4px 14px rgba(0,0,0,.08);
+      user-select: none;
+      -webkit-user-select: none;
     }
-    canvas { display: block; }
-    #overlay { position: absolute; left: 0; top: 0; pointer-events: none; }
+
+    /* CLAVE: ambos canvas ocupan todo el contenedor */
+    #paint, #overlay{
+      position: absolute;
+      left: 0; top: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* overlay encima y sin interceptar eventos */
+    #overlay { pointer-events: none; }
+
     .btn {
       padding: 6px 10px; border: 1px solid #ccc; background: #fff; border-radius: 8px;
       cursor: pointer;
@@ -45,36 +59,30 @@
 <header>
   <strong>Colorear (MVP)</strong>
 
-
   <span class="pill">Herramienta:
     <label><input type="radio" name="tool" value="brush" checked> Pincel</label>
     <label style="margin-left:8px"><input type="radio" name="tool" value="eraser"> Borrador</label>
   </span>
-
 
   <span class="pill">Tamaño:
     <input id="size" type="range" min="2" max="60" value="14" />
     <span id="sizeVal">14</span> px
   </span>
 
-
   <span class="pill">Color:
     <input id="color" type="color" value="#ff3b30" />
   </span>
-
 
   <div class="palette pill" id="palette">
     <span style="margin-right:6px">Paleta:</span>
     <!-- swatches por JS -->
   </div>
 
-
   <button class="btn" id="undo">Deshacer</button>
   <button class="btn" id="redo">Rehacer</button>
   <button class="btn" id="clear">Reset</button>
   <button class="btn" id="save">Guardar PNG</button>
 </header>
-
 
 <div class="wrap">
   <div class="stage" id="stage">
@@ -83,7 +91,6 @@
   </div>
 </div>
 
-
 <script>
 (() => {
   const imgSrc = "lines.png"; // cambia aquí si usas otro nombre
@@ -91,10 +98,8 @@
   const overlay = document.getElementById("overlay");
   const stage = document.getElementById("stage");
 
-
   const ctx = paint.getContext("2d", { willReadFrequently: false });
   const octx = overlay.getContext("2d", { willReadFrequently: false });
-
 
   // Controles
   const sizeInput = document.getElementById("size");
@@ -105,9 +110,7 @@
   const clearBtn = document.getElementById("clear");
   const saveBtn = document.getElementById("save");
 
-
   const toolRadios = [...document.querySelectorAll('input[name="tool"]')];
-
 
   // Paleta simple
   const paletteColors = [
@@ -117,14 +120,12 @@
   const palette = document.getElementById("palette");
   let activeSwatch = null;
 
-
   function setActiveColor(hex) {
     colorInput.value = hex;
     if (activeSwatch) activeSwatch.classList.remove("active");
     const sw = [...palette.querySelectorAll(".swatch")].find(s => s.dataset.hex === hex);
     if (sw) { sw.classList.add("active"); activeSwatch = sw; }
   }
-
 
   paletteColors.forEach((hex, i) => {
     const d = document.createElement("div");
@@ -137,16 +138,12 @@
     if (i === 0) activeSwatch = d;
   });
 
-
   sizeInput.addEventListener("input", () => sizeVal.textContent = sizeInput.value);
 
-
   // Undo/redo simple con snapshots (PNG dataURL).
-  // Para un solo folio funciona bien; si luego escalas a muchas láminas, se optimiza.
   const undoStack = [];
   const redoStack = [];
   const MAX_STACK = 25;
-
 
   function snapshot() {
     try {
@@ -156,11 +153,9 @@
       redoStack.length = 0;
       updateButtons();
     } catch (e) {
-      // Si el navegador bloquea por CORS al cargar la imagen desde file://, sirve con servidor local
       console.warn("Snapshot error:", e);
     }
   }
-
 
   function restoreFromDataURL(dataUrl) {
     const im = new Image();
@@ -171,12 +166,10 @@
     im.src = dataUrl;
   }
 
-
   function updateButtons() {
     undoBtn.disabled = undoStack.length === 0;
     redoBtn.disabled = redoStack.length === 0;
   }
-
 
   undoBtn.addEventListener("click", () => {
     if (!undoStack.length) return;
@@ -187,7 +180,6 @@
     updateButtons();
   });
 
-
   redoBtn.addEventListener("click", () => {
     if (!redoStack.length) return;
     const current = paint.toDataURL("image/png");
@@ -197,12 +189,10 @@
     updateButtons();
   });
 
-
   clearBtn.addEventListener("click", () => {
     snapshot();
     ctx.clearRect(0,0,paint.width,paint.height);
   });
-
 
   saveBtn.addEventListener("click", () => {
     // Exporta la composición: color + overlay
@@ -212,46 +202,37 @@
     outctx.drawImage(paint, 0, 0);
     outctx.drawImage(overlay, 0, 0);
 
-
     const a = document.createElement("a");
     a.download = "coloreado.png";
     a.href = out.toDataURL("image/png");
     a.click();
   });
 
-
   // Dibujo
   let drawing = false;
   let last = null;
-
 
   function getTool() {
     const r = toolRadios.find(x => x.checked);
     return r ? r.value : "brush";
   }
 
-
   function getPos(evt) {
     const rect = stage.getBoundingClientRect();
-    const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-    const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
-    const x = (clientX - rect.left) * (paint.width / rect.width);
-    const y = (clientY - rect.top) * (paint.height / rect.height);
+    const x = (evt.clientX - rect.left) * (paint.width / rect.width);
+    const y = (evt.clientY - rect.top) * (paint.height / rect.height);
     return {x,y};
   }
 
-
-  function lineTo(p0, p1) {
+  function strokeSegment(p0, p1) {
     const tool = getTool();
     const size = +sizeInput.value;
     const color = colorInput.value;
-
 
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.lineWidth = size;
-
 
     if (tool === "eraser") {
       ctx.globalCompositeOperation = "destination-out";
@@ -261,7 +242,6 @@
       ctx.strokeStyle = color;
     }
 
-
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
     ctx.lineTo(p1.x, p1.y);
@@ -269,31 +249,51 @@
     ctx.restore();
   }
 
+  function dot(p) {
+    const tool = getTool();
+    const size = +sizeInput.value;
+    const color = colorInput.value;
+
+    ctx.save();
+    if (tool === "eraser") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = color;
+    }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size/2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 
   function onDown(evt) {
     evt.preventDefault();
+    // CLAVE: captura el puntero para que no se "pierda" el dibujo
+    stage.setPointerCapture(evt.pointerId);
+
     drawing = true;
     last = getPos(evt);
-    snapshot(); // guarda estado antes del trazo
+    snapshot();      // guarda estado antes del trazo
+    dot(last);       // si sólo haces tap/click sin mover
   }
-
 
   function onMove(evt) {
     if (!drawing) return;
     evt.preventDefault();
     const pos = getPos(evt);
-    lineTo(last, pos);
+    strokeSegment(last, pos);
     last = pos;
   }
-
 
   function onUp(evt) {
     if (!drawing) return;
     evt.preventDefault();
     drawing = false;
     last = null;
+    try { stage.releasePointerCapture(evt.pointerId); } catch(e) {}
   }
-
 
   stage.addEventListener("pointerdown", onDown);
   stage.addEventListener("pointermove", onMove);
@@ -301,35 +301,28 @@
   stage.addEventListener("pointercancel", onUp);
   stage.addEventListener("pointerleave", onUp);
 
-
   // Carga de la imagen y ajuste de tamaño
   const img = new Image();
   img.onload = () => {
-    // Ajusta canvas al tamaño de la imagen
+    // Ajusta canvas al tamaño real (coordenadas internas)
     paint.width = img.width; paint.height = img.height;
     overlay.width = img.width; overlay.height = img.height;
 
-
-    // Dibuja líneas encima con fondo transparente:
+    // Líneas encima
     octx.clearRect(0,0,overlay.width,overlay.height);
     octx.drawImage(img, 0, 0);
 
-
-    // Ajusta el tamaño visual en pantalla (responsive)
+    // Tamaño visual responsive
     const maxW = Math.min(window.innerWidth - 24, 1100);
     const scale = Math.min(1, maxW / img.width);
     stage.style.width = (img.width * scale) + "px";
     stage.style.height = (img.height * scale) + "px";
 
-
     updateButtons();
   };
   img.src = imgSrc;
 
-
-  // Sincroniza swatch inicial con color picker
   setActiveColor(paletteColors[0]);
-
 
   window.addEventListener("resize", () => {
     if (!img.width) return;

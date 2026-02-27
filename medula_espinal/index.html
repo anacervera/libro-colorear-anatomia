@@ -26,7 +26,13 @@
       box-shadow: 0 4px 14px rgba(0,0,0,.08);
       user-select: none;
       -webkit-user-select: none;
+
+      /* ZOOM */
+      transform-origin: 0 0;
+      will-change: transform;
+      cursor: grab;
     }
+    .stage.dragging{ cursor: grabbing; }
 
     #paint, #overlay{
       position: absolute;
@@ -201,11 +207,36 @@
     return r ? r.value : "brush";
   }
 
+  // ====== ZOOM STATE ======
+  let viewScale = 1;
+  let viewX = 0;
+  let viewY = 0;
+
+  function applyView() {
+    stage.style.transform = `translate(${viewX}px, ${viewY}px) scale(${viewScale})`;
+  }
+
+  function clampScale(s) {
+    return Math.min(5, Math.max(0.6, s));
+  }
+
+  // IMPORTANTE: coordenadas correctas aunque haya zoom/pan
   function getPos(evt) {
     const rect = stage.getBoundingClientRect();
-    const x = (evt.clientX - rect.left) * (paint.width / rect.width);
-    const y = (evt.clientY - rect.top) * (paint.height / rect.height);
-    return {x,y};
+
+    // coordenadas en pantalla relativas al stage transformado
+    const sx = (evt.clientX - rect.left);
+    const sy = (evt.clientY - rect.top);
+
+    // deshacer translate+scale (en píxeles CSS)
+    const xOnStage = (sx - viewX) / viewScale;
+    const yOnStage = (sy - viewY) / viewScale;
+
+    // mapear al tamaño interno del canvas (píxeles reales)
+    const x = xOnStage * (paint.width / rect.width);
+    const y = yOnStage * (paint.height / rect.height);
+
+    return { x, y };
   }
 
   function strokeSegment(p0, p1) {
@@ -257,6 +288,13 @@
 
   function onDown(evt) {
     evt.preventDefault();
+
+    // PAN con botón derecho o ALT + click
+    if (evt.button === 2 || evt.altKey) {
+      startPan(evt);
+      return;
+    }
+
     stage.setPointerCapture(evt.pointerId);
     drawing = true;
     last = getPos(evt);
@@ -265,6 +303,10 @@
   }
 
   function onMove(evt) {
+    if (panning) {
+      movePan(evt);
+      return;
+    }
     if (!drawing) return;
     evt.preventDefault();
     const pos = getPos(evt);
@@ -273,6 +315,10 @@
   }
 
   function onUp(evt) {
+    if (panning) {
+      endPan(evt);
+      return;
+    }
     if (!drawing) return;
     evt.preventDefault();
     drawing = false;
@@ -286,25 +332,74 @@
   stage.addEventListener("pointercancel", onUp);
   stage.addEventListener("pointerleave", onUp);
 
-  // --- CLAVE: hacer transparente el blanco del overlay ---
+  // Evita menú contextual si usas botón derecho para pan
+  stage.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  // ZOOM con rueda/trackpad
+  stage.addEventListener("wheel", (e) => {
+    e.preventDefault();
+
+    const rect = stage.getBoundingClientRect();
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+
+    const oldScale = viewScale;
+    const zoomFactor = (e.deltaY < 0) ? 1.12 : 1/1.12;
+    viewScale = clampScale(viewScale * zoomFactor);
+
+    // anclar el zoom al cursor
+    const k = viewScale / oldScale;
+    viewX = cx - k * (cx - viewX);
+    viewY = cy - k * (cy - viewY);
+
+    applyView();
+  }, { passive: false });
+
+  // PAN (arrastre) — sólo cuando se activa con Alt o botón derecho
+  let panning = false;
+  let panStart = { x: 0, y: 0 };
+  let viewStart = { x: 0, y: 0 };
+  let panPointerId = null;
+
+  function startPan(e) {
+    e.preventDefault();
+    panning = true;
+    stage.classList.add("dragging");
+    panPointerId = e.pointerId;
+    panStart = { x: e.clientX, y: e.clientY };
+    viewStart = { x: viewX, y: viewY };
+    stage.setPointerCapture(e.pointerId);
+  }
+
+  function movePan(e) {
+    if (!panning) return;
+    e.preventDefault();
+    const dx = e.clientX - panStart.x;
+    const dy = e.clientY - panStart.y;
+    viewX = viewStart.x + dx;
+    viewY = viewStart.y + dy;
+    applyView();
+  }
+
+  function endPan(e) {
+    panning = false;
+    stage.classList.remove("dragging");
+    try { stage.releasePointerCapture(panPointerId); } catch(e) {}
+    panPointerId = null;
+  }
+
+  // --- Transparencia del blanco del overlay (si hace falta) ---
   function makeWhiteTransparent() {
     const imgData = octx.getImageData(0, 0, overlay.width, overlay.height);
     const d = imgData.data;
-
-    // Umbral: ajusta si hiciera falta (240–254 típico)
     const TH = 245;
-
     for (let i = 0; i < d.length; i += 4) {
       const r = d[i], g = d[i+1], b = d[i+2];
-      // si es casi blanco → transparencia total
-      if (r >= TH && g >= TH && b >= TH) {
-        d[i+3] = 0;
-      }
+      if (r >= TH && g >= TH && b >= TH) d[i+3] = 0;
     }
     octx.putImageData(imgData, 0, 0);
   }
 
-  // Carga imagen
   const img = new Image();
   img.onload = () => {
     paint.width = img.width; paint.height = img.height;
@@ -318,6 +413,10 @@
     const scale = Math.min(1, maxW / img.width);
     stage.style.width = (img.width * scale) + "px";
     stage.style.height = (img.height * scale) + "px";
+
+    // resetea vista al cargar (por si recargas con estado raro)
+    viewScale = 1; viewX = 0; viewY = 0;
+    applyView();
 
     updateButtons();
   };

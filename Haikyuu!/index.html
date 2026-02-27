@@ -142,10 +142,13 @@
   const toolRadios = [...document.querySelectorAll('input[name="tool"]')];
 
   // Paleta
-  const paletteColors = [
-    "#ff3b30","#ff9500","#ffcc00","#34c759","#007aff","#5856d6","#af52de","#8e8e93",
-    "#ffffff","#000000"
-  ];
+  const paletteColors = [];
+
+// 24 colores distribuidos en la rueda
+for (let i = 0; i < 24; i++) {
+  const hue = i * 15; // 360 / 24
+  paletteColors.push(`hsl(${hue}, 70%, 55%)`);
+}
   const palette = document.getElementById("palette");
   let activeSwatch = null;
 

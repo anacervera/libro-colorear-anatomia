@@ -1,1 +1,487 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Libro de colorear – Anatomía</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background: #f6f6f6; }
 
+    header{
+      position: sticky; top: 0; z-index: 10;
+      background: white; border-bottom: 1px solid #ddd;
+      padding: 10px 12px;
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    }
+    header > * { font-size: 14px; }
+
+    .wrap { display: grid; place-items: center; padding: 12px; }
+
+    /* viewport = caja fija que NO se transforma */
+    .viewport{
+      position: relative;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      overflow: hidden;
+      touch-action: none;
+      box-shadow: 0 4px 14px rgba(0,0,0,.08);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* view = contenido que SÍ se transforma */
+    .view{
+      position: absolute;
+      left: 0; top: 0;
+      width: 100%;
+      height: 100%;
+      transform-origin: 0 0;
+      will-change: transform;
+      pointer-events: none; /* los eventos los recibe viewport */
+    }
+
+    /* CLAVE: ambos canvas ocupan 100% del view (tamaño CSS) */
+    #paint, #overlay{
+      position: absolute;
+      left: 0; top: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
+    }
+
+    /* DIBUJO ENCIMA de la imagen */
+    #overlay{ z-index: 1; }   /* imagen/contorno abajo */
+    #paint{  z-index: 2; }    /* trazos arriba */
+
+    .btn{
+      padding: 6px 10px; border: 1px solid #ccc; background: #fff; border-radius: 8px;
+      cursor: pointer;
+    }
+    .btn:active{ transform: translateY(1px); }
+
+    .iconbtn{
+      width: 34px; height: 34px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid #ccc; background: #fff; border-radius: 10px;
+      text-decoration: none; color: #333;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      line-height: 1;
+      font-size: 16px;
+    }
+    .iconbtn:active{ transform: translateY(1px); }
+
+    .pill { padding: 6px 10px; border: 1px solid #ccc; background: #fff; border-radius: 999px; }
+    input[type="range"]{ width: 140px; }
+
+    .palette { display: flex; gap: 6px; align-items: center; }
+    .swatch{
+      width: 22px; height: 22px; border-radius: 6px; border: 1px solid #bbb;
+      cursor: pointer;
+    }
+    .swatch.active { outline: 2px solid #111; }
+  </style>
+</head>
+
+<body>
+<header>
+  <a class="iconbtn" href="../" title="Volver al índice" aria-label="Volver al índice">⌂</a>
+  <strong>Colorear</strong>
+
+  <span class="pill">Herramienta:
+    <label><input type="radio" name="tool" value="brush" checked> Pincel</label>
+    <label style="margin-left:8px"><input type="radio" name="tool" value="eraser"> Borrador</label>
+  </span>
+
+  <span class="pill">Tamaño:
+    <input id="size" type="range" min="2" max="60" value="14" />
+    <span id="sizeVal">14</span> px
+  </span>
+
+  <span class="pill">Color:
+    <input id="color" type="color" value="#ff3b30" />
+  </span>
+
+  <div class="palette pill" id="palette">
+    <span style="margin-right:6px">Paleta:</span>
+  </div>
+
+  <button class="btn" id="undo">Deshacer</button>
+  <button class="btn" id="redo">Rehacer</button>
+  <button class="btn" id="clear">Reset</button>
+  <button class="btn" id="save">Guardar PNG</button>
+</header>
+
+<div class="wrap">
+  <div class="viewport" id="viewport">
+    <div class="view" id="view">
+      <!-- OJO: overlay (imagen) abajo, paint (trazos) arriba por z-index -->
+      <canvas id="overlay"></canvas>
+      <canvas id="paint"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const imgSrc = "brain_real.png";
+
+  const viewport = document.getElementById("viewport");
+  const view = document.getElementById("view");
+  const paint = document.getElementById("paint");
+  const overlay = document.getElementById("overlay");
+
+  const ctx = paint.getContext("2d");
+  const octx = overlay.getContext("2d", { willReadFrequently: true });
+
+  const sizeInput = document.getElementById("size");
+  const sizeVal = document.getElementById("sizeVal");
+  const colorInput = document.getElementById("color");
+  const undoBtn = document.getElementById("undo");
+  const redoBtn = document.getElementById("redo");
+  const clearBtn = document.getElementById("clear");
+  const saveBtn = document.getElementById("save");
+  const toolRadios = [...document.querySelectorAll('input[name="tool"]')];
+
+  // Opacidad del trazo (no del canvas completo)
+  const BRUSH_ALPHA = 0.1;
+
+  // Paleta
+  const paletteColors = [
+    "#ff3b30","#ff9500","#ffcc00","#34c759","#007aff","#5856d6","#af52de","#8e8e93",
+    "#ffffff","#000000"
+  ];
+  const palette = document.getElementById("palette");
+  let activeSwatch = null;
+
+  function setActiveColor(hex) {
+    colorInput.value = hex;
+    if (activeSwatch) activeSwatch.classList.remove("active");
+    const sw = [...palette.querySelectorAll(".swatch")].find(s => s.dataset.hex === hex);
+    if (sw) { sw.classList.add("active"); activeSwatch = sw; }
+  }
+
+  paletteColors.forEach((hex, i) => {
+    const d = document.createElement("div");
+    d.className = "swatch" + (i === 0 ? " active" : "");
+    d.style.background = hex;
+    d.dataset.hex = hex;
+    d.title = hex;
+    d.addEventListener("click", () => setActiveColor(hex));
+    palette.appendChild(d);
+    if (i === 0) activeSwatch = d;
+  });
+  setActiveColor(paletteColors[0]);
+
+  sizeInput.addEventListener("input", () => sizeVal.textContent = sizeInput.value);
+
+  function getTool() {
+    return toolRadios.find(x => x.checked)?.value ?? "brush";
+  }
+
+  // ===== Undo/Redo =====
+  const undoStack = [];
+  const redoStack = [];
+  const MAX_STACK = 25;
+
+  function updateButtons() {
+    undoBtn.disabled = undoStack.length === 0;
+    redoBtn.disabled = redoStack.length === 0;
+  }
+
+  function snapshot() {
+    try {
+      undoStack.push(paint.toDataURL("image/png"));
+      if (undoStack.length > MAX_STACK) undoStack.shift();
+      redoStack.length = 0;
+      updateButtons();
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  function restoreFromDataURL(dataUrl) {
+    const im = new Image();
+    im.onload = () => {
+      ctx.clearRect(0,0,paint.width,paint.height);
+      ctx.drawImage(im, 0, 0);
+    };
+    im.src = dataUrl;
+  }
+
+  undoBtn.addEventListener("click", () => {
+    if (!undoStack.length) return;
+    redoStack.push(paint.toDataURL("image/png"));
+    restoreFromDataURL(undoStack.pop());
+    updateButtons();
+  });
+
+  redoBtn.addEventListener("click", () => {
+    if (!redoStack.length) return;
+    undoStack.push(paint.toDataURL("image/png"));
+    restoreFromDataURL(redoStack.pop());
+    updateButtons();
+  });
+
+  clearBtn.addEventListener("click", () => {
+    snapshot();
+    ctx.clearRect(0,0,paint.width,paint.height);
+  });
+
+  saveBtn.addEventListener("click", () => {
+    // Exporta: overlay (imagen) + paint (trazos encima)
+    const out = document.createElement("canvas");
+    out.width = paint.width; out.height = paint.height;
+    const outctx = out.getContext("2d");
+    outctx.drawImage(overlay, 0, 0);
+    outctx.drawImage(paint, 0, 0);
+
+    const a = document.createElement("a");
+    a.download = "coloreado.png";
+    a.href = out.toDataURL("image/png");
+    a.click();
+  });
+
+  // ===== View transform (aplicado a #view) =====
+  let viewScale = 1;
+  let viewX = 0;
+  let viewY = 0;
+
+  function clampScale(s) {
+    return Math.min(6, Math.max(0.5, s));
+  }
+
+  function applyView() {
+    view.style.transform = `translate(${viewX}px, ${viewY}px) scale(${viewScale})`;
+  }
+
+  // baseW/baseH = tamaño CSS del viewport (sin transform)
+  let baseW = 1;
+  let baseH = 1;
+
+  // Convertir coordenadas pantalla -> canvas (inversa del transform)
+  function getPos(evt) {
+    const rect = viewport.getBoundingClientRect();
+
+    const sx = evt.clientX - rect.left;
+    const sy = evt.clientY - rect.top;
+
+    const xInView = (sx - viewX) / viewScale;
+    const yInView = (sy - viewY) / viewScale;
+
+    const x = xInView * (paint.width / baseW);
+    const y = yInView * (paint.height / baseH);
+    return { x, y };
+  }
+
+  function strokeSegment(p0, p1) {
+    const tool = getTool();
+    const size = +sizeInput.value;
+    const color = colorInput.value;
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = size;
+
+    if (tool === "eraser") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.globalAlpha = 1.0;
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.globalCompositeOperation = "multiply";
+      ctx.globalAlpha = BRUSH_ALPHA;
+      ctx.strokeStyle = color;
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function dot(p) {
+    const tool = getTool();
+    const size = +sizeInput.value;
+    const color = colorInput.value;
+
+    ctx.save();
+    if (tool === "eraser") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = BRUSH_ALPHA;   // <-- opacidad del trazo
+      ctx.fillStyle = color;
+    }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size/2, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ===== Dibujo 1 dedo, pinch 2 dedos =====
+  let drawing = false;
+  let last = null;
+
+  const pointers = new Map();
+  let pinching = false;
+  let pinchStart = null;
+
+  function dist(a, b) {
+    const dx = a.x - b.x, dy = a.y - b.y;
+    return Math.hypot(dx, dy);
+  }
+  function mid(a, b) {
+    return { x: (a.x+b.x)/2, y: (a.y+b.y)/2 };
+  }
+
+  viewport.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    viewport.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointers.size === 2) {
+      drawing = false; last = null; pinching = true;
+
+      const [p0, p1] = [...pointers.values()];
+      const m = mid(p0, p1);
+
+      pinchStart = {
+        startDist: dist(p0, p1),
+        startScale: viewScale,
+        startX: viewX,
+        startY: viewY,
+        startMid: m
+      };
+      return;
+    }
+
+    if (pointers.size === 1) {
+      drawing = true;
+      last = getPos(e);
+      snapshot();
+      dot(last);
+    }
+  }, { passive: false });
+
+  viewport.addEventListener("pointermove", (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    e.preventDefault();
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pinching && pointers.size >= 2) {
+      const [p0, p1] = [...pointers.values()];
+      const m = mid(p0, p1);
+
+      const ratio = dist(p0, p1) / pinchStart.startDist;
+      const newScale = clampScale(pinchStart.startScale * ratio);
+
+      viewScale = newScale;
+      viewX = pinchStart.startX + (m.x - pinchStart.startMid.x);
+      viewY = pinchStart.startY + (m.y - pinchStart.startMid.y);
+
+      applyView();
+      return;
+    }
+
+    if (!drawing) return;
+    const pos = getPos(e);
+    strokeSegment(last, pos);
+    last = pos;
+  }, { passive: false });
+
+  function endPointer(e) {
+    if (pointers.has(e.pointerId)) pointers.delete(e.pointerId);
+    try { viewport.releasePointerCapture(e.pointerId); } catch {}
+
+    if (pointers.size < 2) {
+      pinching = false;
+      pinchStart = null;
+    }
+    if (pointers.size === 0) {
+      drawing = false;
+      last = null;
+    }
+  }
+
+  viewport.addEventListener("pointerup", endPointer, { passive: false });
+  viewport.addEventListener("pointercancel", endPointer, { passive: false });
+
+  // ===== Zoom rueda (Mac/PC) anclado al cursor =====
+  viewport.addEventListener("wheel", (e) => {
+    e.preventDefault();
+
+    const rect = viewport.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    const oldScale = viewScale;
+    const zoomFactor = (e.deltaY < 0) ? 1.12 : 1/1.12;
+    const newScale = clampScale(oldScale * zoomFactor);
+
+    const ax = (sx - viewX) / oldScale;
+    const ay = (sy - viewY) / oldScale;
+
+    viewScale = newScale;
+    viewX = sx - ax * viewScale;
+    viewY = sy - ay * viewScale;
+
+    applyView();
+  }, { passive: false });
+
+  // ===== Imagen + fit =====
+  function makeWhiteTransparent() {
+    const imgData = octx.getImageData(0, 0, overlay.width, overlay.height);
+    const d = imgData.data;
+    const TH = 245;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      if (r >= TH && g >= TH && b >= TH) d[i+3] = 0;
+    }
+    octx.putImageData(imgData, 0, 0);
+  }
+
+  function fitToScreen(imgW, imgH) {
+    const maxW = Math.min(window.innerWidth - 24, 1100);
+    const fit = Math.min(1, maxW / imgW);
+
+    viewport.style.width = (imgW * fit) + "px";
+    viewport.style.height = (imgH * fit) + "px";
+
+    baseW = viewport.clientWidth;
+    baseH = viewport.clientHeight;
+
+    viewScale = 1;
+    viewX = 0;
+    viewY = 0;
+    applyView();
+  }
+
+  const img = new Image();
+  img.onload = () => {
+    paint.width = img.width; paint.height = img.height;
+    overlay.width = img.width; overlay.height = img.height;
+
+    octx.clearRect(0,0,overlay.width,overlay.height);
+    octx.drawImage(img, 0, 0);
+    makeWhiteTransparent();
+
+    fitToScreen(img.width, img.height);
+    updateButtons();
+  };
+  img.src = imgSrc;
+
+  window.addEventListener("resize", () => {
+    if (!img.width) return;
+    fitToScreen(img.width, img.height);
+  });
+
+})();
+</script>
+</body>
+</html>
